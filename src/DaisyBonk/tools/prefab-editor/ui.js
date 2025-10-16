@@ -1,8 +1,9 @@
 // ui.js
 import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
+import { AnimationStudio } from './animation/animationStudio.js';
+import { AnimationExporter } from './animation/animationExporter.js';
 
 const RAD2DEG = 180 / Math.PI;
-const DEG2RAD = Math.PI / 180;
 
 export class UIManager {
     constructor(sceneMgr, exporter, schemaMgr) {
@@ -13,7 +14,9 @@ export class UIManager {
         this.$ = (sel) => document.querySelector(sel);
         this.$$ = (sel) => Array.from(document.querySelectorAll(sel));
 
-        this._binded = [];
+        this.animStudio = new AnimationStudio(sceneMgr);
+        this.animExporter = new AnimationExporter(sceneMgr, this.animStudio);
+        this.exporter.animationExporter = this.animExporter;
     }
 
     init() {
@@ -65,7 +68,7 @@ export class UIManager {
         this.$('#btnExportGLB').addEventListener('click', () => this.exporter.exportGLB(this.scene.root, this._prefabFileName('.glb')));
         this.$('#btnExportGLTF').addEventListener('click', () => this.exporter.exportGLTF(this.scene.root, this._prefabFileName('.gltf')));
         this.$('#btnExportJSON').addEventListener('click', () => this.exporter.exportThreeJSON(this.scene.root, this._prefabFileName('.json')));
-        this.$('#btnDownloadSchema').addEventListener('click', () => this.schema.download());
+        this.$('#btnExportZip').addEventListener('click', () => this._exportZip());
 
         // Inspector bindings
         this._bindInspector();
@@ -85,8 +88,12 @@ export class UIManager {
 
         // Keyboard shortcuts
         window.addEventListener('keydown', (ev) => {
-            if (ev.code === 'Delete') { this.scene.delete(); this._autosave(); }
+            if (ev.code === 'Delete' || ev.code === 'Backspace') { this.scene.delete(); this._autosave(); }
             if ((ev.ctrlKey || ev.metaKey) && ev.code === 'KeyD') { ev.preventDefault(); this.scene.duplicate(); this._autosave(); }
+            if (ev.code === 'Space' && this.$('#animationTab').classList.contains('active')) {
+                ev.preventDefault();
+                this.animStudio.playPreview();
+            }
         });
 
         // Attempt to load autosaved state
@@ -106,7 +113,7 @@ export class UIManager {
         this.$(`#${id}`).classList.add('active');
     }
 
-    // --- Outliner ---
+    // --- Outliner (unchanged except minor) ---
     _refreshOutliner() {
         const tree = this.$('#hierarchy');
         tree.innerHTML = '';
@@ -257,7 +264,7 @@ export class UIManager {
         // Texture D&D
         const handleTexFile = (file) => {
             const obj = this.scene.selection; if (!obj) return;
-            const name = file.name.replace(/\.[a-z]+$/i,'');
+            const name = file.name; // ✅ keep filename with extension
             const reader = new FileReader();
             reader.onload = async () => {
                 await this.scene.applyTextureFromDataURL(obj, name, reader.result, el.applyChildren.checked);
@@ -312,7 +319,6 @@ export class UIManager {
         el.empty.classList.add('hidden');
         el.name.value = obj.name || '';
 
-        // Transforms
         el.pos[0].value = obj.position.x.toFixed(3);
         el.pos[1].value = obj.position.y.toFixed(3);
         el.pos[2].value = obj.position.z.toFixed(3);
@@ -327,11 +333,9 @@ export class UIManager {
 
         el.visible.checked = obj.visible !== false;
 
-        // Mesh-only section
         const isMesh = !!obj.isMesh;
         el.meshOnly.style.display = isMesh ? '' : 'none';
 
-        // Material
         if (isMesh) {
             const mat = obj.material || {};
             el.matType.value = (obj.userData?.materialType) || mat.type || 'MeshStandardMaterial';
@@ -339,7 +343,6 @@ export class UIManager {
             el.metal.value = (mat.metalness ?? 0);
             el.rough.value = (mat.roughness ?? 1);
 
-            // UV
             const rep = mat.map?.repeat || { x: 1, y: 1 };
             const off = mat.map?.offset || { x: 0, y: 0 };
             el.uvScale[0].value = rep.x;
@@ -348,7 +351,7 @@ export class UIManager {
             el.uvOffset[1].value = off.y;
         }
 
-        // Metadata
+        // Metadata -> leave as-is; animStudio reads it separately
         const meta = this._loadMeta();
         el.metaId.value = meta.id || '';
         el.metaType.value = meta.type || '';
@@ -391,7 +394,6 @@ export class UIManager {
             const exports = Object.entries(mod).filter(([k, v]) => typeof v === 'function');
             if (!exports.length) { alert('No exported functions found.'); return; }
 
-            // If exactly one function, instantiate immediately
             if (exports.length === 1) {
                 const [name, fn] = exports[0];
                 this.scene.addPrefabFromFactory(fn, name);
@@ -399,7 +401,6 @@ export class UIManager {
                 return;
             }
 
-            // Else prompt selection
             const dlg = this.$('#dlgPickExported');
             const list = this.$('#exportedFunctionList');
             list.innerHTML = '';
@@ -440,7 +441,11 @@ export class UIManager {
         ul.innerHTML = '';
         for (const p of prefabs) {
             const li = document.createElement('li');
-            li.textContent = `${p.id}  —  ${p.path}  [${p.type}]`;
+            const extras = [
+                p.textures?.length ? `textures:${p.textures.length}` : null,
+                p.animations?.length ? `anims:${p.animations.join(',')}` : null
+            ].filter(Boolean).join(' • ');
+            li.textContent = `${p.id}  —  ${p.path}  [${p.type}]  ${extras ? '• ' + extras : ''}`;
             ul.appendChild(li);
         }
     }
@@ -448,18 +453,22 @@ export class UIManager {
     // --- Export code (.js / clipboard) ---
     _exportCode(mode='download') {
         const meta = this._loadMeta();
-        // Ensure ID unique (in local schema)
         const uniqueId = this.schema.ensureUniqueId(meta.id || 'prefab');
         if (uniqueId !== meta.id) {
             meta.id = uniqueId;
             this._saveMeta(meta);
             this._populateInspector(this.scene.selection);
         }
-        const { code, functionName, meta: fileMeta } = this.exporter.generateCode({
+        // Collect animations
+        this.animStudio.saveToLocal(meta.id); // persist current anims
+        const collected = this.animExporter.collect();
+
+        const { code, functionName, meta: fileMeta, texturesUsed, animationsKeys } = this.exporter.generateCode({
             id: meta.id,
             type: meta.type,
             author: meta.author,
-            includeThreeImport: meta.includeThreeImport
+            includeThreeImport: meta.includeThreeImport,
+            animations: collected.animations
         });
 
         const filename = `${functionName}.js`;
@@ -467,32 +476,90 @@ export class UIManager {
         else if (mode === 'copy') this.exporter.copyToClipboard(code);
 
         // Update schema entry suggestion
-        this.schema.addOrUpdateEntry({ id: meta.id, path: filename, type: meta.type || 'prop' });
+        this.schema.addOrUpdateEntry({
+            id: meta.id,
+            path: filename,
+            type: meta.type || 'prop',
+            textures: texturesUsed,
+            animations: animationsKeys,
+            author: meta.author,
+            created: fileMeta.created
+        });
         this._populatePrefabList(this.schema.getSchema().prefabs);
     }
 
-    _prefabFileName(ext='.glb') {
+    async _exportZip() {
         const meta = this._loadMeta();
-        const id = meta.id || 'prefab';
-        return `${id}${ext}`;
+        const id = this.schema.ensureUniqueId(meta.id || 'prefab');
+        if (id !== meta.id) {
+            meta.id = id;
+            this._saveMeta(meta);
+            this._populateInspector(this.scene.selection);
+        }
+        // save anims
+        this.animStudio.saveToLocal(id);
+        const collected = this.animExporter.collect();
+
+        const { code, functionName, meta: fileMeta, texturesUsed, animationsKeys } = this.exporter.generateCode({
+            id,
+            type: meta.type,
+            author: meta.author,
+            includeThreeImport: meta.includeThreeImport,
+            animations: collected.animations
+        });
+
+        // Collect texture binary data from scene (data URLs)
+        const textures = [];
+        this.scene.root.traverse(n => {
+            const t = n.userData?.texture;
+            if (t?.name && t?.url && !textures.find(x => x.filename === t.name)) {
+                textures.push({ filename: t.name, dataURL: t.url });
+            }
+        });
+
+        // Schema fragment to help merge
+        const fragment = {
+            version: 1,
+            prefabs: [
+                {
+                    id,
+                    path: `${functionName}.js`,
+                    type: meta.type || 'prop',
+                    textures: texturesUsed,
+                    animations: animationsKeys,
+                    author: meta.author,
+                    created: fileMeta.created
+                }
+            ]
+        };
+
+        await this.exporter.exportAssetPackZip({
+            id,
+            functionName,
+            code,
+            textures,
+            schemaFragment: fragment
+        });
+    }
+
+    _prefabFileName(ext='.glb') {
+        const meta = this._loadMeta(); const id = meta.id || 'prefab'; return `${id}${ext}`;
     }
 
     // --- Metadata in localStorage ---
     _loadMeta() {
-        try {
-            return JSON.parse(localStorage.getItem('prefab-editor:meta') || '{}');
-        } catch { return {}; }
+        try { return JSON.parse(localStorage.getItem('prefab-editor:meta') || '{}'); } catch { return {}; }
     }
     _saveMeta(meta) {
         try { localStorage.setItem('prefab-editor:meta', JSON.stringify(meta)); } catch {}
     }
 
-    // --- Persistence ---
+    // --- Persistence (state + anims) ---
     _autosave() {
         try {
             const state = this.scene.toState();
             localStorage.setItem('prefab-editor:state', JSON.stringify(state));
-            // Also persist meta
+            // meta
             const meta = {
                 id: this._inspectorEl.metaId.value,
                 type: this._inspectorEl.metaType.value,
@@ -500,6 +567,9 @@ export class UIManager {
                 includeThreeImport: this._inspectorEl.metaImportThree.checked
             };
             this._saveMeta(meta);
+            // animations
+            this.animStudio.saveToLocal(meta.id || 'untitled');
+
             this.$('#statusInfo').textContent = 'Saved.';
             setTimeout(() => { this.$('#statusInfo').textContent = ''; }, 1000);
         } catch (e) { console.warn('Autosave failed', e); }
@@ -515,6 +585,9 @@ export class UIManager {
                 setTimeout(() => { this.$('#statusInfo').textContent = ''; }, 1200);
             }
             const meta = this._loadMeta();
+            // Restore Animation Studio state
+            this.animStudio.loadFromLocal(meta.id || 'untitled');
+
             this._inspectorEl.metaId.value = meta.id || '';
             this._inspectorEl.metaType.value = meta.type || '';
             this._inspectorEl.metaAuthor.value = meta.author || '';
@@ -526,8 +599,10 @@ export class UIManager {
     }
 
     _clearAutosave() {
+        const meta = this._loadMeta();
         localStorage.removeItem('prefab-editor:state');
         localStorage.removeItem('prefab-editor:meta');
+        this.animStudio.clearLocal(meta.id || 'untitled');
         this._newPrefab();
     }
 
@@ -537,18 +612,16 @@ export class UIManager {
             transform: { position:[0,0,0], rotation:[0,0,0], scale:[1,1,1], visible:true },
             children:[]
         });
-        // Reset meta
+        // Reset meta & anims
         this._inspectorEl.metaId.value = '';
         this._inspectorEl.metaType.value = '';
         this._inspectorEl.metaAuthor.value = '';
         this._inspectorEl.metaImportThree.checked = false;
+        this.animStudio.clearLocal('untitled');
         this._autosave();
     }
 }
 
 // helpers
 function toggleMenu(menu) { menu.classList.toggle('hidden'); }
-
-function debounce(fn, ms) {
-    let t=null; return (...args)=>{ clearTimeout(t); t = setTimeout(()=>fn(...args), ms); };
-}
+function debounce(fn, ms) { let t=null; return (...args)=>{ clearTimeout(t); t = setTimeout(()=>fn(...args), ms); }; }

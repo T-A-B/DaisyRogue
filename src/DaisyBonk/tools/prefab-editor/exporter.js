@@ -1,7 +1,8 @@
 // exporter.js
 import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
-
+// Use jsDelivr for example module to avoid bare specifier issues
 import { GLTFExporter } from 'https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/exporters/GLTFExporter.js';
+import JSZip from 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm';
 
 function pad(n){ return n < 10 ? '0' + n : '' + n; }
 function isoNow(){
@@ -12,22 +13,34 @@ function asHexColor(c) {
     const color = new THREE.Color(c);
     return '0x' + color.getHexString();
 }
-function num(n) {
-    // compact float with max 6 decimals
-    return Number.parseFloat(n).toFixed(6).replace(/\.?0+$/,'');
-}
+function num(n) { return Number.parseFloat(n).toFixed(6).replace(/\.?0+$/,''); }
 
 export class Exporter {
-    constructor(sceneMgr) {
+    constructor(sceneMgr, animationExporter=null) {
         this.sceneMgr = sceneMgr;
+        this.animationExporter = animationExporter; // may be null; ui will set one
     }
 
     // --- ES Module code generation ---
-    generateCode({ id='prefab', type='prop', author='unknown', includeThreeImport=false } = {}) {
+    /**
+     * @param {object} opt
+     *  - id, type, author, includeThreeImport
+     *  - animations?: Record<string, any[]>
+     * @returns {{ code:string, functionName:string, meta:object, texturesUsed:string[], animationsKeys:string[] }}
+     */
+    generateCode({ id='prefab', type='prop', author='unknown', includeThreeImport=false, animations=null } = {}) {
         const root = this.sceneMgr.root;
         const functionName = toFuncName(id || 'prefab');
+        const TEX_BASE = `./assets/textures/${id}/`;
 
-        // Build code lines
+        // Textures per mesh (data URL may exist only in editor; here we only need filename + uv)
+        const meshes = [];
+        root.traverse(n => { if (n.isMesh && n.userData?.editable) meshes.push(n); });
+
+        // Assign names if missing (we rely on .name for animations)
+        let unnamedCounter = 0;
+        meshes.forEach(m => { if (!m.name) { m.name = `mesh_${++unnamedCounter}`; } });
+
         const lines = [];
         if (includeThreeImport) {
             lines.push(`import * as THREE from 'three';`);
@@ -38,82 +51,101 @@ export class Exporter {
         lines.push(`export function ${functionName}(){`);
         lines.push(`  const g = new THREE.Group();`);
 
-        // Map from node ID to variable name and parent symbol
-        let varCounter = 0;
-        const symFor = new Map();
-        symFor.set(root.userData.id, 'g');
+        // We will build, then attach textures per mesh using loader calls
+        lines.push(`  const _loader = new THREE.TextureLoader();`);
+        lines.push(`  const _tex = (file)=>{ const t=_loader.load(${JSON.stringify(TEX_BASE)} + file); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t; };`);
 
-        root.children.forEach(ch => this._emitNode(lines, ch, 'g', ++varCounter));
+        let varCounter = 0;
+        const emitNode = (node, parentSym, localIndexRef) => {
+            const nextName = suggestName(node);
+            const sym = `${nextName}${localIndexRef}`;
+            if (node.isMesh) {
+                const { declGeom, declMat } = this._meshDecl(node);
+                lines.push(`  const ${sym} = new THREE.Mesh(`);
+                lines.push(`    ${declGeom},`);
+                lines.push(`    ${declMat}`);
+                lines.push(`  );`);
+                this._emitTransform(lines, sym, node);
+                if (node.name) lines.push(`  ${sym}.name = ${JSON.stringify(node.name)};`);
+                lines.push(`  ${parentSym}.add(${sym});`);
+                // Texture assignment (per mesh instance)
+                if (node.userData?.texture?.name) {
+                    const fname = node.userData.texture.name;
+                    const rx = node.userData?.uv?.scale?.[0] ?? 1;
+                    const ry = node.userData?.uv?.scale?.[1] ?? 1;
+                    const ox = node.userData?.uv?.offset?.[0] ?? 0;
+                    const oy = node.userData?.uv?.offset?.[1] ?? 0;
+                    lines.push(`  {`);
+                    lines.push(`    const _m = ${sym}.material;`);
+                    lines.push(`    const _t = _tex(${JSON.stringify(fname)});`);
+                    lines.push(`    _t.repeat.set(${num(rx)}, ${num(ry)});`);
+                    lines.push(`    _t.offset.set(${num(ox)}, ${num(oy)});`);
+                    lines.push(`    _m.map = _t; _m.needsUpdate = true;`);
+                    lines.push(`  }`);
+                }
+            } else {
+                lines.push(`  const ${sym} = new THREE.Group();`);
+                this._emitTransform(lines, sym, node);
+                if (node.name) lines.push(`  ${sym}.name = ${JSON.stringify(node.name)};`);
+                lines.push(`  ${parentSym}.add(${sym});`);
+                let childIdx = 0;
+                node.children.forEach(ch => {
+                    if (!ch.userData?.editable) return;
+                    emitNode(ch, sym, ++childIdx);
+                });
+            }
+        };
+
+        let topIndex = 0;
+        root.children.forEach(ch => { if (ch.userData?.editable) emitNode(ch, 'g', ++topIndex); });
+
+        // Inject animations map
+        const animCollected = animations || this.animationExporter?.collect()?.animations || {};
+        const animKeys = Object.keys(animCollected);
+        if (animKeys.length) {
+            lines.push('');
+            lines.push(`  // Animation data (consumed by AnimationManager at runtime)`);
+            lines.push(`  g.userData.animations = ${JSON.stringify(animCollected, null, 2)};`);
+        }
 
         lines.push(`  return g;`);
         lines.push(`}`);
+
         const code = lines.join('\n');
 
+        // Build meta
+        const texturesUsed = collectUniqueTextureNames(meshes);
         const meta = {
             id, category: type, file: `${functionName}.js`, author, created: isoNow()
         };
-        return { code, functionName, meta };
-    }
-
-    _emitNode(lines, node, parentSym, counterRef) {
-        const nextName = suggestName(node);
-        const sym = `${nextName}${counterRef}`;
-        if (node.isMesh) {
-            const { declGeom, declMat, setUV } = this._meshDecl(node);
-            lines.push(`  const ${sym} = new THREE.Mesh(`);
-            lines.push(`    ${declGeom},`);
-            lines.push(`    ${declMat}`);
-            lines.push(`  );`);
-            this._emitTransform(lines, sym, node);
-            if (setUV) lines.push(`  ${setUV}`);
-            lines.push(`  ${parentSym}.add(${sym});`);
-        } else {
-            lines.push(`  const ${sym} = new THREE.Group();`);
-            this._emitTransform(lines, sym, node);
-            lines.push(`  ${parentSym}.add(${sym});`);
-            let childIdx = 0;
-            node.children.forEach(ch => {
-                if (!ch.userData?.editable) return;
-                this._emitNode(lines, ch, sym, ++childIdx);
-            });
-        }
+        return { code, functionName, meta, texturesUsed, animationsKeys: animKeys };
     }
 
     _emitTransform(lines, sym, node) {
-        // Position
         if (node.position.lengthSq() > 1e-10) {
             lines.push(`  ${sym}.position.set(${num(node.position.x)}, ${num(node.position.y)}, ${num(node.position.z)});`);
         }
-        // Rotation
         if (Math.abs(node.rotation.x) > 1e-10 || Math.abs(node.rotation.y) > 1e-10 || Math.abs(node.rotation.z) > 1e-10) {
             lines.push(`  ${sym}.rotation.set(${num(node.rotation.x)}, ${num(node.rotation.y)}, ${num(node.rotation.z)});`);
         }
-        // Scale
         if (Math.abs(node.scale.x-1) > 1e-10 || Math.abs(node.scale.y-1) > 1e-10 || Math.abs(node.scale.z-1) > 1e-10) {
             lines.push(`  ${sym}.scale.set(${num(node.scale.x)}, ${num(node.scale.y)}, ${num(node.scale.z)});`);
         }
-        // Visibility
-        if (node.visible === false) {
-            lines.push(`  ${sym}.visible = false;`);
-        }
-        if (node.name) {
-            lines.push(`  ${sym}.name = ${JSON.stringify(node.name)};`);
-        }
+        if (node.visible === false) lines.push(`  ${sym}.visible = false;`);
     }
 
     _meshDecl(node) {
         const ud = node.userData || {};
         const st = ud.shapeType || (node.geometry?.type?.replace('Geometry','')) || 'Mesh';
         const p = ud.params || {};
-        let geom = null;
-
         const g = (name, args) => `new THREE.${name}(${args})`;
 
+        let geom;
         switch (st) {
             case 'Box': geom = g('BoxGeometry', [p.w||1,p.h||1,p.d||1,p.ws||1,p.hs||1,p.ds||1].map(num).join(', ')); break;
             case 'Sphere': geom = g('SphereGeometry', [p.r||.5,p.w||16,p.h||12].map(num).join(', ')); break;
-            case 'Cylinder': geom = g('CylinderGeometry', [p.rt||.5,p.rb||.5,p.h||1,p.rs||24,p.hs||1,!!p.open].map(x=>typeof x==='boolean'?x: num(x)).join(', ')); break;
-            case 'Cone': geom = g('ConeGeometry', [p.r||.5,p.h||1,p.rs||24,p.hs||1,!!p.open].map(x=>typeof x==='boolean'?x: num(x)).join(', ')); break;
+            case 'Cylinder': geom = g('CylinderGeometry', [p.rt||.5,p.rb||.5,p.h||1,p.rs||24,p.hs||1,!!p.open].map(x=>typeof x==='boolean'?x:num(x)).join(', ')); break;
+            case 'Cone': geom = g('ConeGeometry', [p.r||.5,p.h||1,p.rs||24,p.hs||1,!!p.open].map(x=>typeof x==='boolean'?x:num(x)).join(', ')); break;
             case 'Torus': geom = g('TorusGeometry', [p.r||.5,p.tube||.2,p.rs||16,p.ts||24,p.arc||Math.PI*2].map(num).join(', ')); break;
             case 'Dodecahedron': geom = g('DodecahedronGeometry', [p.r||.6,p.detail||0].map(num).join(', ')); break;
             case 'Capsule': geom = g('CapsuleGeometry', [p.r||.35,p.len||.8,p.cs||8,p.rs||16].map(num).join(', ')); break;
@@ -121,8 +153,7 @@ export class Exporter {
             case 'Octahedron': geom = g('OctahedronGeometry', [p.r||.6,p.detail||0].map(num).join(', ')); break;
             case 'Icosahedron': geom = g('IcosahedronGeometry', [p.r||.6,p.detail||0].map(num).join(', ')); break;
             default:
-                // Unknown primitive — fallback to BufferGeometry clone (not ideal for readable code)
-                geom = `/* Unsupported primitive: ${st}. Replace with your own geometry. */ new THREE.BoxGeometry(1,1,1)`;
+                geom = `/* Unsupported primitive: ${st}. */ new THREE.BoxGeometry(1,1,1)`;
                 break;
         }
 
@@ -134,16 +165,7 @@ export class Exporter {
         if (typeof mp.roughness === 'number') matArgs.push(`roughness:${num(mp.roughness)}`);
         const mat = `new THREE.${matType}({ ${matArgs.join(', ')} })`;
 
-        let setUV = '';
-        if (node.material?.map) {
-            const rep = node.material.map.repeat, off = node.material.map.offset;
-            setUV = `${node.name ? `${JSON.stringify(node.name)}` : sym}/*map*/; /* Attach texture at runtime. */`;
-            // We can't reference the symbol name here; UV settings are better applied in-runtime once map is loaded.
-            // Instead, we emit comments below:
-            setUV = `// Note: assign a texture map to this mesh at runtime if desired.\n  // Example:\n  // ${node.name || 'mesh'}.material.map = new THREE.TextureLoader().load('path/to.png');\n  // ${node.name || 'mesh'}.material.map.repeat.set(${num(rep.x)}, ${num(rep.y)});\n  // ${node.name || 'mesh'}.material.map.offset.set(${num(off.x)}, ${num(off.y)});`;
-        }
-
-        return { declGeom: geom, declMat: mat, setUV };
+        return { declGeom: geom, declMat: mat };
     }
 
     // --- Export helpers ---
@@ -156,9 +178,7 @@ export class Exporter {
         setTimeout(() => URL.revokeObjectURL(a.href), 1500);
     }
 
-    copyToClipboard(text) {
-        return navigator.clipboard?.writeText(text);
-    }
+    copyToClipboard(text) { return navigator.clipboard?.writeText(text); }
 
     exportGLB(rootGroup, filename='prefab.glb') {
         const exporter = new GLTFExporter();
@@ -185,6 +205,39 @@ export class Exporter {
         const text = JSON.stringify(json);
         this.downloadText(filename, text);
     }
+
+    /**
+     * Build a ZIP asset pack containing:
+     *  ./src/prefabs/<functionName>.js
+     *  ./assets/textures/<prefabId>/<...images>
+     *  ./src/prefabs/prefab.schema.json (optional merged or fragment)
+     */
+    async exportAssetPackZip({ id, functionName, code, textures, schemaFragment=null }) {
+        const zip = new JSZip();
+        const prefabPath = `src/prefabs/${functionName}.js`;
+        zip.file(prefabPath, code);
+
+        // textures
+        if (textures && textures.length) {
+            for (const t of textures) {
+                const path = `assets/textures/${id}/${t.filename}`;
+                const { data, isBase64 } = dataURLToBytes(t.dataURL);
+                zip.file(path, data, { binary: true, base64: isBase64 });
+            }
+        }
+
+        // schema fragment to help merge
+        if (schemaFragment) {
+            zip.file(`src/prefabs/${id}.schema.fragment.json`, JSON.stringify(schemaFragment, null, 2));
+        }
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${id}_asset_pack.zip`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    }
 }
 
 // --- utils ---
@@ -192,9 +245,28 @@ function toFuncName(id) {
     const clean = (id || 'Prefab').replace(/[^a-zA-Z0-9]+/g, ' ').trim().split(/\s+/).map(s => s[0].toUpperCase()+s.slice(1)).join('');
     return `make${clean}Mesh`;
 }
-
 function suggestName(node) {
     const base = node.isMesh ? 'mesh' : 'group';
     const n = (node.name || '').trim().replace(/\s+/g,'_').replace(/[^\w]/g,'');
     return n ? n.toLowerCase() : base;
+}
+function collectUniqueTextureNames(meshes) {
+    const set = new Set();
+    meshes.forEach(m => {
+        const name = m.userData?.texture?.name;
+        if (name) set.add(name);
+    });
+    return Array.from(set);
+}
+function dataURLToBytes(dataURL) {
+    // data:[<mediatype>][;base64],<data>
+    const base64 = /^data:.*;base64,/.test(dataURL);
+    const raw = dataURL.split(',')[1] || '';
+    if (base64) {
+        return { data: raw, isBase64: true };
+    } else {
+        // URL-encoded
+        const str = decodeURIComponent(raw);
+        return { data: new TextEncoder().encode(str), isBase64: false };
+    }
 }

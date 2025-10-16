@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "start:server": "node server_auth.js",
+    "start:client": "node client/serve.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.16.0"
+  }
+}

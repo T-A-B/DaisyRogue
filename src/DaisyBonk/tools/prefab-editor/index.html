@@ -9,10 +9,10 @@
             }
         </script>
     <meta charset="utf-8" />
-    <title>DaisyBonk Prefab Editor</title>
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<link rel="icon" href="data:," />
-<link rel="stylesheet" href="./styles.css" />
+    <title>DaisyBonk Prefab Editor + Animation Studio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
 <header id="topbar">
@@ -51,6 +51,7 @@
                 <button id="btnExportGLB">Export .glb</button>
                 <button id="btnExportGLTF">Export .gltf</button>
                 <button id="btnExportJSON">Export Three JSON</button>
+                <button id="btnExportZip">Download Asset Pack (.zip)</button>
                 <hr />
                 <button id="btnDownloadSchema">Download prefab.schema.json</button>
             </div>
@@ -62,11 +63,12 @@
 </header>
 
 <main id="layout">
-    <!-- LEFT: Outliner / Prefabs -->
+    <!-- LEFT: Outliner / Prefabs / Animation Studio -->
     <aside id="leftPane">
         <div class="tabs">
             <button class="tab active" data-tab="hierarchyTab">Hierarchy</button>
             <button class="tab" data-tab="prefabsTab">Prefabs</button>
+            <button class="tab" data-tab="animationTab">Animation Studio</button>
         </div>
 
         <section id="hierarchyTab" class="tab-panel active">
@@ -83,8 +85,54 @@
                 <button id="btnLoadSchema">Load Existing schema.json</button>
             </div>
             <div id="prefabLibrary" class="list">
-                <p class="muted">Import your existing prefab .js to clone it into the scene, or load a schema to browse IDs.</p>
+                <p class="muted">Import an existing prefab .js to clone it, or load schema to browse IDs.</p>
                 <ul id="prefabList"></ul>
+            </div>
+        </section>
+
+        <!-- NEW: Animation Studio Tab -->
+        <section id="animationTab" class="tab-panel">
+            <div class="pane-toolbar anim-toolbar">
+                <input id="animSeqName" type="text" placeholder="animation key (e.g. idle)" />
+                <button id="btnNewAnimSeq">New</button>
+                <button id="btnRenameAnimSeq">Rename</button>
+                <button id="btnDeleteAnimSeq">Delete</button>
+                <span class="spacer"></span>
+                <button id="btnPlayAnim">▶ Play</button>
+                <button id="btnStopAnim">⏹ Stop</button>
+            </div>
+
+            <div class="anim-panel">
+                <div class="anim-left">
+                    <h4>Sequences</h4>
+                    <ul id="animSequenceList" class="anim-list"></ul>
+                </div>
+
+                <div class="anim-right">
+                    <h4>Behaviors in “<span id="animSeqTitle">(none)</span>”</h4>
+                    <div id="animBehaviorList" class="anim-behavior-list"></div>
+
+                    <div class="anim-addbar">
+                        <select id="animBehaviorType">
+                            <option value="rotate">rotate</option>
+                            <option value="translate">translate</option>
+                            <option value="scale">scale</option>
+                            <option value="colorShift">colorShift</option>
+                            <option value="fadeIn">fadeIn</option>
+                            <option value="fadeOut">fadeOut</option>
+                            <option value="bounce">bounce</option>
+                            <option value="pulse">pulse</option>
+                            <option value="orbit">orbit</option>
+                        </select>
+                        <button id="btnAddBehavior">Add Behavior</button>
+                    </div>
+
+                    <div class="anim-timeline">
+                        <label class="muted">Scrub</label>
+                        <input id="animScrub" type="range" min="0" max="1" step="0.001" value="0" />
+                        <label class="checkbox"><input id="animLoopPreview" type="checkbox" checked /> Loop Preview</label>
+                    </div>
+                </div>
             </div>
         </section>
     </aside>
@@ -283,8 +331,8 @@
             <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>D</kbd> — Duplicate</li>
             <li>Drag in “Hierarchy” — Reparent under target</li>
             <li>Mouse: Left select • Middle pan • Scroll zoom • Right rotate</li>
+            <li>Animation Studio: create sequences, add behaviors, preview, then export.</li>
         </ul>
-        <p>Tip: Import an existing prefab <code>.js</code> file (from <code>src/prefabs/</code>) to copy it into the scene, tweak it, then export a new prefab module or .glb.</p>
         <menu>
             <button value="ok">Close</button>
         </menu>

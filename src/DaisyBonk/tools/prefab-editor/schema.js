@@ -3,7 +3,6 @@
 export class SchemaManager {
     constructor() {
         this.schema = { version: 1, prefabs: [] };
-        // If autosaved schema exists, load it
         try {
             const s = window.localStorage.getItem('prefab-editor:schema');
             if (s) this.schema = JSON.parse(s);
@@ -11,41 +10,41 @@ export class SchemaManager {
     }
 
     loadFromJSONText(text) {
-        try {
-            const obj = JSON.parse(text);
-            if (!obj || typeof obj !== 'object' || !Array.isArray(obj.prefabs)) {
-                throw new Error('Invalid schema format.');
-            }
-            this.schema = obj;
-            this._persist();
-            return this.schema;
-        } catch (e) {
-            console.error(e);
-            throw e;
+        const obj = JSON.parse(text);
+        if (!obj || typeof obj !== 'object' || !Array.isArray(obj.prefabs)) {
+            throw new Error('Invalid schema format.');
         }
-    }
-
-    getSchema() {
+        this.schema = obj;
+        this._persist();
         return this.schema;
     }
 
-    listPrefabIds() {
-        return this.schema.prefabs.map(p => p.id);
-    }
+    getSchema() { return this.schema; }
+    listPrefabIds() { return this.schema.prefabs.map(p => p.id); }
 
     ensureUniqueId(id) {
         let candidate = id;
         let i = 2;
         const exists = (x) => this.schema.prefabs.some(p => p.id === x);
-        while (exists(candidate)) {
-            candidate = `${id}-${i++}`;
-        }
+        while (exists(candidate)) candidate = `${id}-${i++}`;
         return candidate;
     }
 
-    addOrUpdateEntry({ id, path, type }) {
-        const idx = this.schema.prefabs.findIndex(p => p.id === id);
-        const entry = { id, path, type };
+    /**
+     * Add or update a schema entry.
+     * @param {object} p { id, path, type, textures?:string[], animations?:string[], author?, created? }
+     */
+    addOrUpdateEntry(p) {
+        const entry = {
+            id: p.id,
+            path: p.path,
+            type: p.type || 'prop',
+            textures: p.textures || [],
+            animations: p.animations || [],
+            author: p.author || undefined,
+            created: p.created || undefined
+        };
+        const idx = this.schema.prefabs.findIndex(x => x.id === entry.id);
         if (idx >= 0) this.schema.prefabs[idx] = entry;
         else this.schema.prefabs.push(entry);
         this._persist();
@@ -61,8 +60,6 @@ export class SchemaManager {
     }
 
     _persist() {
-        try {
-            window.localStorage.setItem('prefab-editor:schema', JSON.stringify(this.schema));
-        } catch {}
+        try { window.localStorage.setItem('prefab-editor:schema', JSON.stringify(this.schema)); } catch {}
     }
 }
