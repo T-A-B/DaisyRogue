@@ -22,7 +22,7 @@ const MIME = {
     ".wav": "audio/wav",
     ".mp3": "audio/mpeg",
 };
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 http
     .createServer((req, res) => {
         // default to index.html
@@ -40,4 +40,4 @@ http
             res.end(data);
         });
     })
-    .listen(PORT, () => console.log("✅ Server running at http://localhost:8080"));
+    .listen(PORT, () => console.log("✅ Server running at http://localhost:"+PORT));
