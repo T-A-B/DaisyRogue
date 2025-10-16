@@ -1,7 +1,10 @@
 {
+  "type": "module",
+  "name": "daisyrogue-root",
+  "version": "1.0.0",
   "scripts": {
-    "start:server": "node server_auth.js",
-    "start:client": "node client/serve.js"
+    "start:auth": "node server_auth.js",
+    "start:main": "node server.js"
   },
   "dependencies": {
     "express": "^4.19.2",
