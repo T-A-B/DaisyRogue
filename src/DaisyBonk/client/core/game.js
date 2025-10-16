@@ -332,6 +332,10 @@ export class Game {
         this.updateStatusFx(dt);
         this.updatePoolsVisual(dt);
         this.ui.updateHUD(this);
+        this.scene.traverse(obj => {
+            const anim = obj.userData?.animationManager;
+            if (anim) anim.update(dt);
+        });
         this.renderer.render(this.scene, this.camera);
         requestAnimationFrame(()=>this.update());
     }
