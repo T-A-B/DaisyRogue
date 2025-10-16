@@ -100,8 +100,25 @@ export class Game {
         const params = new URLSearchParams(location.search);
         const room = params.get('room') || 'lobby';
         const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const wsHost = location.hostname;
-        this.socket = new WebSocket(`${wsProto}://${wsHost}:8081/?room=${room}`);
+
+// location.host already includes port when you're on localhost
+        const host = location.host;
+
+// Choose correct path
+        let path = '/api'; // your ingress prefix on DigitalOcean
+        let url;
+
+        if (location.hostname === 'localhost') {
+            // Local dev uses explicit 8081 port, no prefix
+            url = `${wsProto}://localhost:8081/?room=${room}`;
+        } else {
+            // Production uses ingress path (no port)
+            url = `${wsProto}://${host}${path}?room=${room}`;
+        }
+
+        console.log('Connecting to', url);
+        this.socket = new WebSocket(url);
+
         this.socket.onmessage = e => this.onNetMessage(e);
 
         this._last = now();
