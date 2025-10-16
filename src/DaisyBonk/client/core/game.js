@@ -7,8 +7,8 @@ import { makeVoxelGround, makePortal, makePlayerMesh,
     makeRangedPawnMesh, makeSummonerMesh, makeBeastmasterMesh, makeBeastPetMesh
 } from '../prefabs/index.js';
 import { FXSystem } from '../systems/fxSystem.js';
-import { UISystem } from '../systems/UISystem.js';
-import { InputSystem } from '../systems/InputSystem.js';
+import { UISystem } from '../systems/uisystem.js';
+import { InputSystem } from '../systems/inputsystem.js';
 import {DamageNumberSystem} from "../systems/DamageNumberSystem.js";
 
 const TURN_SPEED = 3.0;
