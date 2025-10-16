@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>NewRoguelike — Lobbies</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body{margin:0;background:#0d0f13;color:#eaf2ff;font-family:Segoe UI,system-ui,Arial;}
+        header{padding:16px 20px;border-bottom:1px solid #273148;}
+        main{padding:20px;max-width:960px;margin:0 auto;}
+        .btn{display:inline-block;padding:10px 14px;border:1px solid #7a7cff;border-radius:8px;background:#1b2233;color:#eaf2ff;text-decoration:none}
+        .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-top:14px}
+        .card{background:#131826;border:1px solid #2b3650;border-radius:12px;padding:14px}
+        .card h3{margin:0 0 6px;color:#7a7cff}
+        .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;}
+        small{color:#9fb1d4}
+    </style>
+</head>
+<body>
+<header>
+    <h1>NewRoguelike — Games in Progress</h1>
+</header>
+<main>
+    <a class="btn" href="./?room=lobby">Join Default Room</a>
+    <div id="rooms" class="grid"></div>
+</main>
+<script>
+    (async function(){
+        const host = location.hostname;
+        const res = await fetch(`http://${host}:8081/api/rooms`);
+        const data = await res.json();
+        const cont = document.getElementById('rooms');
+        cont.innerHTML = '';
+        data.rooms.forEach(r=>{
+            const a = document.createElement('a');
+            a.className = 'card';
+            a.href = `./?room=${encodeURIComponent(r.id)}`;
+            a.innerHTML = `
+      <h3>${r.id}</h3>
+      <div>Players: <b>${r.players}</b> &nbsp; Stage: <b>${r.stage}</b></div>
+      <div>Enemies: <b>${r.enemies}</b> &nbsp; Portal: <b>${r.portalUnlocked?'Unlocked':'Locked'}</b></div>
+      <small>Created: <span class="mono">${r.createdAt?new Date(r.createdAt).toLocaleTimeString():''}</span></small>
+    `;
+            cont.appendChild(a);
+        });
+    })();
+</script>
+</body>
+</html>

@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <script type="importmap">
+            {
+              "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js"
+              }
+            }
+        </script>
+    <meta charset="utf-8" />
+    <title>DaisyBonk Prefab Editor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<header id="topbar">
+    <div class="brand">
+        <strong>DaisyBonk</strong> • Prefab Editor
+    </div>
+
+    <div class="toolbar">
+        <div class="menu">
+            <button id="btnAddShape">➕ Add Shape</button>
+            <div id="addShapeMenu" class="menu-dropdown hidden">
+                <button data-shape="Group">Group</button>
+                <button data-shape="Box">Box</button>
+                <button data-shape="Sphere">Sphere</button>
+                <button data-shape="Cylinder">Cylinder</button>
+                <button data-shape="Cone">Cone</button>
+                <button data-shape="Torus">Torus</button>
+                <button data-shape="Dodecahedron">Dodecahedron</button>
+                <button data-shape="Capsule">Capsule</button>
+                <button data-shape="Plane">Plane</button>
+                <hr />
+                <button data-shape="Octahedron">Octahedron</button>
+                <button data-shape="Icosahedron">Icosahedron</button>
+            </div>
+        </div>
+
+        <div class="menu">
+            <button id="btnImportPrefab">📥 Import Prefab</button>
+        </div>
+
+        <div class="menu">
+            <button id="btnExport">⬇️ Export</button>
+            <div id="exportMenu" class="menu-dropdown hidden">
+                <button id="btnExportCode">Export ES Module (.js)</button>
+                <button id="btnCopyCode">Copy Code to Clipboard</button>
+                <button id="btnExportGLB">Export .glb</button>
+                <button id="btnExportGLTF">Export .gltf</button>
+                <button id="btnExportJSON">Export Three JSON</button>
+                <hr />
+                <button id="btnDownloadSchema">Download prefab.schema.json</button>
+            </div>
+        </div>
+
+        <button id="btnResetView" title="Reset Camera">🎯 Reset View</button>
+        <button id="btnHelp" title="Help / Shortcuts">❓ Help</button>
+    </div>
+</header>
+
+<main id="layout">
+    <!-- LEFT: Outliner / Prefabs -->
+    <aside id="leftPane">
+        <div class="tabs">
+            <button class="tab active" data-tab="hierarchyTab">Hierarchy</button>
+            <button class="tab" data-tab="prefabsTab">Prefabs</button>
+        </div>
+
+        <section id="hierarchyTab" class="tab-panel active">
+            <div class="pane-toolbar">
+                <button id="btnNewPrefab">New Prefab</button>
+                <button id="btnDuplicate">Duplicate</button>
+                <button id="btnDelete">Delete</button>
+            </div>
+            <div id="hierarchy" class="tree" aria-label="Hierarchy (drag to reparent)"></div>
+        </section>
+
+        <section id="prefabsTab" class="tab-panel">
+            <div class="pane-toolbar">
+                <button id="btnLoadSchema">Load Existing schema.json</button>
+            </div>
+            <div id="prefabLibrary" class="list">
+                <p class="muted">Import your existing prefab .js to clone it into the scene, or load a schema to browse IDs.</p>
+                <ul id="prefabList"></ul>
+            </div>
+        </section>
+    </aside>
+
+    <!-- CENTER: 3D viewport -->
+    <section id="centerPane">
+        <div id="viewport" tabindex="0" aria-label="3D View"></div>
+        <div id="statusbar">
+            <span id="statusSelection">No selection</span>
+            <span id="statusInfo"></span>
+        </div>
+    </section>
+
+    <!-- RIGHT: Inspector -->
+    <aside id="rightPane">
+        <div class="panel">
+            <h3>Inspector</h3>
+
+            <div id="inspectorEmpty" class="muted">Select an item in the hierarchy or the 3D view.</div>
+
+            <div id="inspector" class="inspector hidden">
+                <div class="field">
+                    <label>Name</label>
+                    <input id="inpName" type="text" />
+                </div>
+
+                <div class="grid-3 field-group">
+                    <div class="field">
+                        <label>Pos X</label>
+                        <input id="posX" type="number" step="0.01" />
+                    </div>
+                    <div class="field">
+                        <label>Pos Y</label>
+                        <input id="posY" type="number" step="0.01" />
+                    </div>
+                    <div class="field">
+                        <label>Pos Z</label>
+                        <input id="posZ" type="number" step="0.01" />
+                    </div>
+
+                    <div class="field">
+                        <label>Rot X (°)</label>
+                        <input id="rotX" type="number" step="1" />
+                    </div>
+                    <div class="field">
+                        <label>Rot Y (°)</label>
+                        <input id="rotY" type="number" step="1" />
+                    </div>
+                    <div class="field">
+                        <label>Rot Z (°)</label>
+                        <input id="rotZ" type="number" step="1" />
+                    </div>
+
+                    <div class="field">
+                        <label>Scale X</label>
+                        <input id="sclX" type="number" step="0.01" />
+                    </div>
+                    <div class="field">
+                        <label>Scale Y</label>
+                        <input id="sclY" type="number" step="0.01" />
+                    </div>
+                    <div class="field">
+                        <label>Scale Z</label>
+                        <input id="sclZ" type="number" step="0.01" />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label>Visibility</label>
+                    <label class="checkbox"><input id="chkVisible" type="checkbox" checked /> Visible</label>
+                </div>
+
+                <div id="meshOnly" class="panel subtle">
+                    <h4>Material</h4>
+
+                    <div class="field">
+                        <label>Type</label>
+                        <select id="selMatType">
+                            <option>MeshStandardMaterial</option>
+                            <option>MeshPhysicalMaterial</option>
+                        </select>
+                    </div>
+
+                    <div class="grid-3 field-group">
+                        <div class="field">
+                            <label>Color</label>
+                            <input id="inpColor" type="color" value="#cccccc" />
+                        </div>
+                        <div class="field">
+                            <label>Metalness</label>
+                            <input id="inpMetal" type="range" min="0" max="1" step="0.01" />
+                        </div>
+                        <div class="field">
+                            <label>Roughness</label>
+                            <input id="inpRough" type="range" min="0" max="1" step="0.01" />
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label>Texture</label>
+                        <div id="textureDrop" class="dropzone" tabindex="0">Drop image here or <button id="btnPickTex" type="button">Choose…</button></div>
+                        <input id="fileTexture" type="file" accept="image/png,image/jpeg" class="hidden" />
+                    </div>
+
+                    <div class="grid-2 field-group">
+                        <div class="field">
+                            <label>UV Scale</label>
+                            <div class="grid-2">
+                                <input id="uvScaleX" type="number" step="0.1" value="1" />
+                                <input id="uvScaleY" type="number" step="0.1" value="1" />
+                            </div>
+                        </div>
+                        <div class="field">
+                            <label>UV Offset</label>
+                            <div class="grid-2">
+                                <input id="uvOffsetX" type="number" step="0.1" value="0" />
+                                <input id="uvOffsetY" type="number" step="0.1" value="0" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <button id="btnClearTexture" type="button">Remove Texture</button>
+                    </div>
+
+                    <div class="field">
+                        <label class="checkbox"><input id="chkApplyToChildren" type="checkbox" /> Apply to children (if Group)</label>
+                    </div>
+                </div>
+
+                <div class="panel subtle">
+                    <h4>Prefab Metadata</h4>
+                    <div class="grid-2 field-group">
+                        <div class="field">
+                            <label>Prefab ID</label>
+                            <input id="metaId" type="text" placeholder="e.g. crystal" />
+                        </div>
+                        <div class="field">
+                            <label>Category / Type</label>
+                            <input id="metaType" type="text" placeholder="enemy | prop | item…" />
+                        </div>
+                    </div>
+                    <div class="grid-2 field-group">
+                        <div class="field">
+                            <label>Author</label>
+                            <input id="metaAuthor" type="text" placeholder="playerName" />
+                        </div>
+                        <div class="field">
+                            <label>Add import for THREE in .js</label>
+                            <label class="checkbox">
+                                <input id="metaImportThree" type="checkbox" />
+                                <span>Insert <code>import * as THREE</code></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel subtle">
+                    <h4>Persistence</h4>
+                    <div class="grid-3">
+                        <button id="btnSaveNow" type="button">Save</button>
+                        <button id="btnRevert" type="button">Revert</button>
+                        <button id="btnClear" type="button">Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>Texture Library</h3>
+            <div id="textureLibrary" class="texlib"></div>
+        </div>
+    </aside>
+</main>
+
+<!-- Modals / hidden inputs -->
+<input id="fileImportPrefab" class="hidden" type="file" accept=".js" />
+<input id="fileLoadSchema" class="hidden" type="file" accept=".json" />
+
+<dialog id="dlgPickExported" class="modal">
+    <form method="dialog">
+        <h3>Select exported function</h3>
+        <p>Pick a function to instantiate from the imported module:</p>
+        <ul id="exportedFunctionList"></ul>
+        <menu>
+            <button value="cancel">Cancel</button>
+        </menu>
+    </form>
+</dialog>
+
+<dialog id="dlgHelp" class="modal">
+    <form method="dialog">
+        <h3>Help & Shortcuts</h3>
+        <ul>
+            <li><kbd>Del</kbd> — Delete selected</li>
+            <li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>D</kbd> — Duplicate</li>
+            <li>Drag in “Hierarchy” — Reparent under target</li>
+            <li>Mouse: Left select • Middle pan • Scroll zoom • Right rotate</li>
+        </ul>
+        <p>Tip: Import an existing prefab <code>.js</code> file (from <code>src/prefabs/</code>) to copy it into the scene, tweak it, then export a new prefab module or .glb.</p>
+        <menu>
+            <button value="ok">Close</button>
+        </menu>
+    </form>
+</dialog>
+
+<script type="module" src="./editor.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "prefabs": [
+    { "id": "wizard", "path": "makeWizardMesh.js", "type": "enemy" },
+    { "id": "crystal", "path": "makeCrystalMesh.js", "type": "prop" }
+  ]
+}

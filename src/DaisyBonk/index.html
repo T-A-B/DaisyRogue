@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Voxel Roguelike — Not‑Megabonk</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <!-- Import map so modules can simply `import * as THREE from 'three'` -->
+    <script type="importmap">
+        {
+          "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+          }
+        }
+    </script>
+</head>
+<body>
+<canvas id="game" tabindex="0" aria-label="Game canvas"></canvas>
+
+<div class="hud">
+    <div class="panel">
+        <div class="bars">
+            <div class="bar health"><div class="fill" id="hpFill"></div><div class="text" id="hpText"></div></div>
+            <div class="bar shield"><div class="fill" id="shFill"></div><div class="text" id="shText"></div></div>
+            <div class="bar mana"><div class="fill" id="mpFill"></div><div class="text" id="mpText"></div></div>
+            <div class="row">
+                <div class="muted">Stage: <span id="stageText">1</span> / 10</div>
+                <div class="muted">Kills: <span id="killText">0</span></div>
+                <div class="muted">Boss: <span id="bossText">Alive</span></div>
+            </div>
+        </div>
+        <div class="statgrid" style="margin-top:10px">
+            <div class="label">Move Speed</div><div class="val" id="statMove">–</div>
+            <div class="label">Damage Mult.</div><div class="val" id="statDmg">–</div>
+            <div class="label">Attack Speed</div><div class="val" id="statAS">–</div>
+            <div class="label">Proj. Qty</div><div class="val" id="statPQ">–</div>
+            <div class="label">Crit Chance</div><div class="val" id="statCrit">–</div>
+            <div class="label">Armor</div><div class="val" id="statArmor">–</div>
+            <div class="label">Dodge</div><div class="val" id="statDodge">–</div>
+            <div class="label">Regen (H/M)</div><div class="val" id="statRegen">–</div>
+        </div>
+        <div style="margin-top:10px">
+            <div class="weapons" id="weaponSlots"></div>
+        </div>
+    </div>
+
+    <div class="panel right">
+        <div class="obj">
+            <div><strong>Objective</strong></div>
+            <div class="muted" id="objectiveText">Find the portal. Kill the boss to unlock it.</div>
+        </div>
+        <div class="legend">
+            <span class="pill white">White</span>
+            <span class="pill green">Green</span>
+            <span class="pill blue">Blue</span>
+            <span class="pill purple">Purple</span>
+            <span class="pill yellow">Yellow</span>
+            <span class="pill cyan">Cyan</span>
+            <span class="pill rainbow">Rainbow</span>
+        </div>
+    </div>
+</div>
+
+<div class="big" id="startOverlay">
+    <h1>Voxel Roguelike</h1>
+    <p>WASD move • Mouse aim • LMB attack • Q swap weapons • 1/2/3 quick swap • E pick up • F use portal</p>
+    <div class="button" id="startBtn">Start Run</div>
+</div>
+
+<div id="nameOverlay" class="overlay">
+    <div class="panel name-select">
+        <h2>Enter Your Name</h2>
+        <input id="nameInput" type="text" maxlength="24" placeholder="Player" />
+        <button id="nameBtn">Continue</button>
+    </div>
+</div>
+
+<div class="big" id="stageOverlay">
+    <h1 id="stageTitle">Stage 1</h1>
+    <p id="stageSubtitle">Find the portal, defeat the boss.</p>
+    <div class="button" id="stageBtn">Press any key to continue...</div>
+</div>
+
+<div class="big" id="endOverlay">
+    <h1 id="endTitle">Run Over</h1>
+    <p id="endSubtitle">Press the button to restart.</p>
+    <div class="button" id="restartBtn">Restart</div>
+</div>
+<div id="rewardOverlay" class="overlay">
+    <div class="panel reward">
+        <h2 id="rewardTitle">Choose a Reward</h2>
+        <div id="rewardOptions" class="reward-list"></div>
+        <p class="hint">Pick with 1/2/3 or Z/X/C</p>
+    </div>
+</div>
+<div id="classOverlay" class="overlay">
+    <div class="panel class-select">
+        <h2>Select Your Class</h2>
+        <div id="classOptions" class="class-list"></div>
+    </div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="help">Tip: Pick up items (E) after kills. Rarity boosts the roll.</div>
+<div class="crosshair"></div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
