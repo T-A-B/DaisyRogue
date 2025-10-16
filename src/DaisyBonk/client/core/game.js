@@ -1,12 +1,12 @@
 // src/core/Game.js — keyboard movement + enemy flavors + portal + rewards + FX events
 import * as THREE from 'three';
 import { clamp, now } from '../utils/math.js';
-import { Player } from '../entities/Player.js';
+import { Player } from '../entities/player.js';
 import { makeVoxelGround, makePortal, makePlayerMesh,
     makePawnMesh, makeWizardMesh, makeKnightMesh,
     makeRangedPawnMesh, makeSummonerMesh, makeBeastmasterMesh, makeBeastPetMesh
 } from '../prefabs/index.js';
-import { FXSystem } from '../systems/FXSystem.js';
+import { FXSystem } from '../systems/fxSystem.js';
 import { UISystem } from '../systems/UISystem.js';
 import { InputSystem } from '../systems/InputSystem.js';
 import {DamageNumberSystem} from "../systems/DamageNumberSystem.js";
