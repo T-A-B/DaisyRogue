@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rand } from '../utils/math.js';
 import { makePatternTexture } from '../assets/textures.js';
-import { AnimationManager } from '../engine/AnimationManager.js';
+import { AnimationManager } from '../engine/animationManager.js';
 
 // src/prefabs/index.js
 export { makePawnMesh, makeWizardMesh, makeKnightMesh } from './enemies.js';
