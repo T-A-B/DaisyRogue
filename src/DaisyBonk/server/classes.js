@@ -9,7 +9,7 @@ export const CLASSES = {
             moveSpeed: 6.0,
             maxHealth: 120,
             maxMana: 80,
-            maxShield: 25,
+            maxShield: 0,
             healthRegen: 0.02,
             manaRegen: 0.1,
             damageMult: 1.0,
@@ -28,9 +28,9 @@ export const CLASSES = {
         desc: "Fast and deadly — high crits, low sustain.",
         stats: {
             moveSpeed: 7.5,
-            maxHealth: 80,
+            maxHealth: 40,
             maxMana: 60,
-            maxShield: 15,
+            maxShield: 0,
             healthRegen: 0.01,
             manaRegen: 0.15,
             damageMult: 1.4,
@@ -41,7 +41,7 @@ export const CLASSES = {
             dodge: 0.15
         },
         passive: { type: "rage", power: 1.15 }, // could increase dmg when low HP
-        weapons: [{ id:"blaster", cd:0 }, { id:"shotgun", cd:0 }],
+        weapons: [{ id:"shotgun", cd:0 }],
         items: []
     },
     mage: {
@@ -49,9 +49,9 @@ export const CLASSES = {
         desc: "Ranged caster using fire magic and rapid mana regen.",
         stats: {
             moveSpeed: 5.2,
-            maxHealth: 90,
+            maxHealth: 25,
             maxMana: 150,
-            maxShield: 15,
+            maxShield: 100,
             healthRegen: 0.01,
             manaRegen: 0.25,
             damageMult: 1.1,

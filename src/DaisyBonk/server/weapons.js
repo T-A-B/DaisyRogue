@@ -39,9 +39,7 @@ const TINT = { blaster: 0xa8c6ff, shotgun: 0xffd166, firestaff: 0xff6b3b };
 // ------------------------------------------------------------
 export function initPlayerWeapons() {
     return [
-        { id: "blaster",   cd: 0 },
-        { id: "shotgun",   cd: 0 },
-        { id: "firestaff", cd: 0 }
+        { id: "blaster",   cd: 0 }
     ];
 }
 

@@ -136,7 +136,109 @@ function tickBeastPets(room, dt){
         }
     }
 }
+function wizardAI(room, e, dt){
+    // internal cooldowns
+    e.castCd = (e.castCd ?? (1.1 + Math.random()*0.4)) - dt;
 
+    if (e.castCd > 0) return;
+    const t = nearestPlayer(room, e);
+    if (!t) { e.castCd = 0.3; return; }
+
+    const dx = t.x - e.x, dz = t.z - e.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const dirX = dx / dist, dirZ = dz / dist;
+
+    // Choose a pattern
+    if (dist > 7.0) {
+        // Aimed volley (2–3 shots), slight spread, poison or burn
+        const qty = 2 + (Math.random() < 0.5 ? 1 : 0);
+        const spread = 5 * Math.PI/180;
+        for (let i=0;i<qty;i++){
+            const off = (i - (qty-1)/2) * spread;
+            const c = Math.cos(off), s = Math.sin(off);
+            const ax = dirX*c + dirZ*s, az = dirZ*c - dirX*s;
+            spawnEnemyProjectile(room, e, ax, az, {
+                speed: 20, ttl: 1.6, dmg: 10,
+                status: (Math.random() < 0.5) ? { type:"poison", dur:2.6, power:5 } : { type:"burn", dur:2.0, power:6 },
+                tint: 0xff78d6, kind: "wizard_aim"
+            });
+        }
+        e.castCd = 1.2 + Math.random()*0.3;
+    } else if (dist > 4.0) {
+        // Fan spread
+        const qty = 5, spread = 8 * Math.PI/180;
+        for (let i=0;i<qty;i++){
+            const off = (i - (qty-1)/2) * spread;
+            const c = Math.cos(off), s = Math.sin(off);
+            const ax = dirX*c + dirZ*s, az = dirZ*c - dirX*s;
+            spawnEnemyProjectile(room, e, ax, az, {
+                speed: 18, ttl: 1.2, dmg: 8,
+                status: { type:"slow", dur:1.6, power:0.35 },
+                tint: 0xb97cff, kind: "wizard_fan"
+            });
+        }
+        e.castCd = 1.0 + Math.random()*0.4;
+    } else {
+        // Close: nova or pool drop
+        if (Math.random() < 0.5){
+            const rays = 12;
+            for (let k=0;k<rays;k++){
+                const ang = (k/rays) * Math.PI*2;
+                const ax = Math.sin(ang), az = Math.cos(ang);
+                spawnEnemyProjectile(room, e, ax, az, {
+                    speed: 16, ttl: 1.0, dmg: 7,
+                    status: { type:"bleed", dur:1.6, power:4 },
+                    tint: 0xff9b6b, kind: "wizard_nova"
+                });
+            }
+            e.castCd = 2.2 + Math.random()*0.5;
+        } else {
+            // pool at target location
+            spawnPool(room.state, { x: t.x, z: t.z, radius: 1.1, duration: 2.6, dps: 6, team: "enemy" });
+            room.state.events.push({ type:"fx_pool", x:t.x, z:t.z, tint:0xff6b3b });
+            e.castCd = 2.0 + Math.random()*0.4;
+        }
+    }
+}
+
+function knightAI(room, e, dt){
+    e.castCd = (e.castCd ?? (1.4 + Math.random()*0.6)) - dt;
+    if (e.castCd > 0) return;
+    const t = nearestPlayer(room, e);
+    if (!t) { e.castCd = 0.5; return; }
+
+    const dx = t.x - e.x, dz = t.z - e.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const dirX = dx / dist, dirZ = dz / dist;
+
+    if (dist <= 5.5){
+        // Cone slam: 7-shot cone with slow
+        const qty=7, spread=10*Math.PI/180;
+        for(let i=0;i<qty;i++){
+            const off=(i-(qty-1)/2)*spread;
+            const c=Math.cos(off), s=Math.sin(off);
+            const ax=dirX*c + dirZ*s, az=dirZ*c - dirX*s;
+            spawnEnemyProjectile(room, e, ax, az, {
+                speed: 22, ttl: 0.7, dmg: 12,
+                status: { type:"slow", dur:1.5, power:0.4 },
+                tint: 0xffcc66, kind:"knight_cone"
+            });
+        }
+        e.castCd = 1.6 + Math.random()*0.4;
+    } else {
+        // Warning ring (nova)
+        const rays = 10;
+        for (let k=0;k<rays;k++){
+            const ang=(k/rays)*Math.PI*2;
+            const ax=Math.sin(ang), az=Math.cos(ang);
+            spawnEnemyProjectile(room, e, ax, az, {
+                speed: 14, ttl: 0.9, dmg: 9,
+                status: null, tint:0xffaa66, kind:"knight_nova"
+            });
+        }
+        e.castCd = 2.5 + Math.random()*0.6;
+    }
+}
 // --- main entry ---
 export function tickEnemyAttacks(room, dt){
     const st = room.state;
@@ -145,6 +247,8 @@ export function tickEnemyAttacks(room, dt){
         if (t === "pawn_ranged") pawnRangedAI(room, e, dt);
         else if (t === "summoner") summonerAI(room, e, dt);
         else if (t === "beastmaster") beastmasterAI(room, e, dt);
+        else if (t === "wizard") wizardAI(room, e, dt);
+        else if (t === "knight") knightAI(room, e, dt);
         // wizards/knights implemented previously (keep your existing code),
         // or replicate here if you moved them into this module.
     }

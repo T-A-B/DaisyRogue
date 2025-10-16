@@ -37,16 +37,50 @@ export class UISystem {
         this._rewardKeyHandler = (e)=>this._onRewardKey(e);
     }
 
-    bindButtons({ onStart, onStageContinue, onRestart }){
-        this.el.startBtn.onclick = ()=>{ this.el.startOverlay.classList.remove('show'); onStart?.(); };
-        this.el.stageBtn.onclick = ()=>{ this.el.stageOverlay.classList.remove('show'); onStageContinue?.(); };
-        this.el.stageOverlay.onclick = (e)=>{
-            if (e.target === this.el.stageOverlay){
+    bindButtons({ onStart, onStageContinue, onRestart }) {
+        // --- Start button ---
+        this.el.startBtn.onclick = () => {
+            this.el.startOverlay.classList.remove('show');
+            onStart?.();
+        };
+
+        // --- Stage Continue button ---
+        this.el.stageBtn.onclick = () => {
+            this.el.stageOverlay.classList.remove('show');
+            onStageContinue?.();
+        };
+
+        // --- Click on stage overlay backdrop ---
+        this.el.stageOverlay.onclick = (e) => {
+            if (e.target === this.el.stageOverlay) {
                 this.el.stageOverlay.classList.remove('show');
                 onStageContinue?.();
+                window.removeEventListener('keydown', this._onStageKey);
             }
         };
-        this.el.restartBtn.onclick = ()=>{ this.el.endOverlay.classList.remove('show'); onRestart?.(); };
+
+        // --- "Press any key to continue" support ---
+        this._onStageKey = (e) => {
+            // only act if overlay is currently visible
+            if (this.el.stageOverlay.classList.contains('show')) {
+                this.el.stageOverlay.classList.remove('show');
+                onStageContinue?.();
+                window.removeEventListener('keydown', this._onStageKey);
+            }
+        };
+
+        // Whenever you show the stage overlay, enable the listener:
+        this.el.stageOverlay.addEventListener('transitionend', () => {
+            if (this.el.stageOverlay.classList.contains('show')) {
+                window.addEventListener('keydown', this._onStageKey);
+            }
+        });
+
+        // --- Restart button ---
+        this.el.restartBtn.onclick = () => {
+            this.el.endOverlay.classList.remove('show');
+            onRestart?.();
+        };
     }
 
     showStart(){ this.el.startOverlay.classList.add('show'); }
