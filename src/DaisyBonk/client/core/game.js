@@ -6,7 +6,7 @@ import { makeVoxelGround, makePortal, makePlayerMesh,
     makePawnMesh, makeWizardMesh, makeKnightMesh,
     makeRangedPawnMesh, makeSummonerMesh, makeBeastmasterMesh, makeBeastPetMesh
 } from '../prefabs/index.js';
-import { FXSystem } from '../systems/fxSystem.js';
+import { FXSystem } from '../systems/fxsystem.js';
 import { UISystem } from '../systems/uisystem.js';
 import { InputSystem } from '../systems/inputsystem.js';
 import {DamageNumberSystem} from "../systems/DamageNumberSystem.js";
