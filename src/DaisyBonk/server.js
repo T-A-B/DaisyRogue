@@ -7,7 +7,11 @@ const server = http.createServer();
 
 // rooms: roomId -> { clients: Map<id,{socket,buffer}>, players: Map<id,{id,x,z,color}> }
 const rooms = new Map();
-
+server.on("request", (req, res) => {
+    // Respond 200 OK to any normal HTTP request so health checks pass
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("OK");
+});
 server.on("upgrade", (req, socket) => {
     if (req.headers.upgrade?.toLowerCase() !== "websocket") {
         socket.destroy();
@@ -153,7 +157,7 @@ function logRooms(prefix=''){
     console.log(`[rooms] ${prefix} :: ${summary || '∅'}`);
 }
 
-const PORT = 8081;
+const PORT = process.env.PORT || 8081;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ WS server on ws://0.0.0.0:${PORT}`);
     const ip = Object.values(os.networkInterfaces())
