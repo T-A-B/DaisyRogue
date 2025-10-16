@@ -1,4 +1,4 @@
-// serve.js — static web server for DaisyBonk with correct MIME types
+// serve.js — static web server for DaisyBonk
 import http from "http";
 import fs from "fs";
 import path from "path";
@@ -6,12 +6,14 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const root = __dirname;
+const root = __dirname; // directory that contains index.html, main.js, etc.
+const PORT = process.env.PORT || 3000;
 
+// MIME type map
 const MIME = {
     ".html": "text/html; charset=UTF-8",
-    ".js": "text/javascript; charset=UTF-8",
-    ".mjs": "text/javascript; charset=UTF-8",
+    ".js": "application/javascript; charset=UTF-8",
+    ".mjs": "application/javascript; charset=UTF-8",
     ".css": "text/css; charset=UTF-8",
     ".json": "application/json; charset=UTF-8",
     ".png": "image/png",
@@ -22,22 +24,44 @@ const MIME = {
     ".wav": "audio/wav",
     ".mp3": "audio/mpeg",
 };
-const PORT = process.env.PORT || 3000;
+
+// log helper
+const log = (msg, color = "\x1b[36m") =>
+    console.log(`${color}[serve]\x1b[0m ${msg}`);
+
+log(`Root directory: ${root}`);
+
 http
     .createServer((req, res) => {
-        // default to index.html
-        let reqPath = req.url.split("?")[0];
-        let filePath = path.join(root, reqPath === "/" ? "index.html" : reqPath);
+        const urlPath = req.url.split("?")[0];
+
+        // Health endpoint for DO App Platform
+        if (urlPath === "/health" || urlPath === "/_health") {
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("OK");
+            return;
+        }
+
+        // Determine file path
+        const filePath = path.join(root, urlPath === "/" ? "index.html" : urlPath);
+
         fs.readFile(filePath, (err, data) => {
             if (err) {
-                res.writeHead(404, { "Content-Type": "text/plain" });
-                res.end("404 Not Found: " + reqPath);
+                log(`❌ 404 Not Found: ${urlPath}`);
+                res.writeHead(404, { "Content-Type": "text/plain; charset=UTF-8" });
+                res.end(`404 Not Found: ${urlPath}`);
                 return;
             }
+
             const ext = path.extname(filePath).toLowerCase();
             const type = MIME[ext] || "application/octet-stream";
+
             res.writeHead(200, { "Content-Type": type });
             res.end(data);
+            log(`✅ 200 ${urlPath} (${type})`);
         });
     })
-    .listen(PORT, "0.0.0.0", () => console.log("✅ Server running at http://0.0.0.0:"+PORT));
+    .listen(PORT, "0.0.0.0", () => {
+        log(`Server running on http://0.0.0.0:${PORT}`);
+        log("Press Ctrl+C to stop");
+    });
