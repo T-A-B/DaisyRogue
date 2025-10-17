@@ -375,9 +375,7 @@ function tickRoom(room) {
         broadcast(room, snapshot(room));
         st.events.length = 0; // clear one-shot events after sending
     }
-    console.log(0);
     if (st.runActive) {
-        console.log(1);// 👈 skip check before round actually begins
         const aliveCount = [...room.players.values()].filter(p => !p.dead && p.hp > 0).length;
 
         if (aliveCount === 0 && !st.allDead) {
