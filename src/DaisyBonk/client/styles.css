@@ -212,6 +212,9 @@ html,body{
 #nameBtn{ padding:10px 14px; border-radius:8px; border:1px solid #7a7cff; background:#232a3b; color:#eaf2ff; cursor:pointer; }
 #nameBtn:hover{ background:#2b3450; }
 
+#stageOverlay { position:fixed; inset:0; display:none; justify-content:center; align-items:center;
+    background:rgba(10,12,16,0.85); z-index:260; backdrop-filter:blur(4px); opacity:0; transition:opacity .2s;}
+#stageOverlay.show { display:flex; opacity:1; }
 /* --- Animation Studio --- */
 .anim-toolbar { gap: 8px; }
 .anim-toolbar .spacer { flex: 1; }

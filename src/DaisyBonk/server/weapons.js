@@ -118,7 +118,7 @@ export function tickWeapons(room, dt) {
 function shootWeapon(room, pl, def, dirX, dirZ, weaponId) {
     const spread = (def.spreadDeg || 0) * Math.PI/180;
     const half = (def.qty - 1) * 0.5;
-
+    if(pl.dead) return;
     for (let i = 0; i < def.qty; i++) {
         const off = (i - half) * spread;
         const [ax, az] = rot2(dirX, dirZ, off);

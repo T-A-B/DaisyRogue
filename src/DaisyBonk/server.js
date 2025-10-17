@@ -48,6 +48,8 @@ function ensureRoom(roomId){
         };
 
         spawnWave(r, 6);
+        r.state.runActive = true;        // 👈 run now live
+
         r.loop = setInterval(()=>tickRoom(r), 1000/TICK_HZ);
         rooms.set(roomId,r);
     }
@@ -251,6 +253,9 @@ function onMessage(room,id,msg){
         if (c) wsSend(c.socket, { type:"reward_applied", item: applied });
         return;
     }
+    if (msg.type === "request_restart" && room.state.allDead) {
+        restartRoom(room); // the same restartRoom() you already have
+    }
 }
 
 // --- Rewards helper ---
@@ -265,71 +270,158 @@ function sendRewardOffer(room, playerId){
 }
 
 // --- Server tick ---
-function tickRoom(room){
-    const st=room.state;st.seq++;st.time+=DT;
-    // Statuses (DoTs, slows) affect movement/shooting this tick
-    tickStatuses(room, DT);
-    // Player movement + resource regen/passives
-    for(const pl of room.players.values()){
-        // Movement (same math client uses)
-        const baseS = 6.0;
-        const s = (pl.stats?.moveSpeed ?? baseS) * (pl._speedMul ?? 1);
-        const yaw=Math.atan2(pl.input.aimX,pl.input.aimZ);
-        const moveX=(pl.input.right - pl.input.left);
-        const moveZ=(pl.input.down  - pl.input.up);
-        const vx=(moveX*Math.cos(yaw)) + (moveZ*Math.sin(yaw));
-        const vz=(moveZ*Math.cos(yaw)) - (moveX*Math.sin(yaw));
-        pl.x=clamp(pl.x+vx*s*DT,-23,23);
-        pl.z=clamp(pl.z+vz*s*DT,-23,23);
+function tickRoom(room) {
+    const st = room.state;
+    st.seq++;
+    st.time += DT;
 
-        // Basic regen
-        if (pl.stats){
+    // ------------------------------------------------------------
+    // 1. Update persistent effects (DoTs, slows, buffs)
+    // ------------------------------------------------------------
+    tickStatuses(room, DT);
+
+    // ------------------------------------------------------------
+    // 2. Player logic
+    // ------------------------------------------------------------
+    for (const pl of room.players.values()) {
+        // --- Handle death / respawn ---
+        if (pl.dead) {
+            // pl.respawnTimer = (pl.respawnTimer ?? 0) - DT;
+            // // if (pl.respawnTimer <= 0) {
+            // //     // Respawn player
+            // //     pl.dead = false;
+            // //     pl.hp = pl.stats?.maxHealth ?? 120;
+            // //     pl.mana = pl.stats?.maxMana ?? 100;
+            // //     pl.shield = 0;
+            // //     pl.x = 0;
+            // //     pl.z = 0;
+            // //     st.events.push({ type: "player_respawn", id: pl.id });
+            // // }
+            continue; // skip updates for dead players
+        }
+
+        // --- Movement (same math client uses) ---
+        const baseSpeed = 6.0;
+        const s = (pl.stats?.moveSpeed ?? baseSpeed) * (pl._speedMul ?? 1);
+        const yaw = Math.atan2(pl.input.aimX, pl.input.aimZ);
+        const moveX = pl.input.right - pl.input.left;
+        const moveZ = pl.input.down - pl.input.up;
+
+        const vx = moveX * Math.cos(yaw) + moveZ * Math.sin(yaw);
+        const vz = moveZ * Math.cos(yaw) - moveX * Math.sin(yaw);
+        pl.x = clamp(pl.x + vx * s * DT, -23, 23);
+        pl.z = clamp(pl.z + vz * s * DT, -23, 23);
+
+        // --- Basic regen ---
+        if (pl.stats) {
             const maxH = pl.stats.maxHealth ?? 120;
             const maxM = pl.stats.maxMana ?? 100;
             const maxS = pl.stats.maxShield ?? 0;
-            const hR   = pl.stats.healthRegen ?? 0;
-            const mR   = pl.stats.manaRegen ?? 0;
+            const hR = pl.stats.healthRegen ?? 0;
+            const mR = pl.stats.manaRegen ?? 0;
 
-            if (maxH>0) pl.hp = clamp(pl.hp + hR*DT*100, 0, maxH);
-            if (maxM>0) pl.mana = clamp((pl.mana??0) + mR*DT*100, 0, maxM);
-            if (maxS>0 && (pl.shield??0) < maxS) {
-                // simple slow shield trickle
-                pl.shield = clamp((pl.shield??0) + 2*DT, 0, maxS);
+            // Health regen only if alive and below max
+            if (maxH > 0 && pl.hp < maxH) {
+                pl.hp = clamp(pl.hp + hR * DT * 100, 0, maxH);
+            }
+
+            // Mana regen
+            if (maxM > 0 && (pl.mana ?? 0) < maxM) {
+                pl.mana = clamp((pl.mana ?? 0) + mR * DT * 100, 0, maxM);
+            }
+
+            // Shield trickle
+            if (maxS > 0 && (pl.shield ?? 0) < maxS) {
+                pl.shield = clamp((pl.shield ?? 0) + 2 * DT, 0, maxS);
             }
         }
 
-        // (Optional spot) class passives — leave signals for other systems
-        // Example signals you can consume in weapons/items modules:
-        // pl.passiveSignal = { rage: hp%<50, manaShield: ratio }
+        // --- Passives ---
         pl.passiveSignal = undefined;
         if (pl.passive?.type === "rage") {
-            const hpPct = (pl.hp / (pl.stats?.maxHealth || 1));
-            if (hpPct <= 0.5) pl.passiveSignal = { type:"rage", power: pl.passive.power ?? 1.15 };
+            const hpPct = pl.hp / (pl.stats?.maxHealth || 1);
+            if (hpPct <= 0.5)
+                pl.passiveSignal = { type: "rage", power: pl.passive.power ?? 1.15 };
         } else if (pl.passive?.type === "mana_shield") {
-            pl.passiveSignal = { type:"mana_shield", ratio: pl.passive.ratio ?? 0.3 };
+            pl.passiveSignal = {
+                type: "mana_shield",
+                ratio: pl.passive.ratio ?? 0.3,
+            };
         }
     }
-    tickEnemyAttacks(room, DT);
-    // Weapons (auto + manual + items on-fire)
-    tickWeapons(room, DT);
 
-    // Projectiles, enemies, pools
+    // ------------------------------------------------------------
+    // 3. Game object updates
+    // ------------------------------------------------------------
+    tickEnemyAttacks(room, DT);
+    tickWeapons(room, DT);
     tickProjectiles(room, DT);
     tickEnemies(room, DT);
     tickPools(room, DT);
 
-    // Portal unlock when room is clear
+    // ------------------------------------------------------------
+    // 4. Portal unlock when room is clear
+    // ------------------------------------------------------------
     if (!st.portalUnlocked && st.enemies.length === 0) {
         st.portalUnlocked = true;
-        broadcast(room, { type:"portal_unlocked" });
+        broadcast(room, { type: "portal_unlocked" });
     }
 
-    // Snapshot @ SNAP_HZ, then clear one-shot events
-    room.snapCounter=(room.snapCounter+1)%Math.round(TICK_HZ/SNAP_HZ);
-    if(room.snapCounter===0){
-        broadcast(room,snapshot(room));
-        st.events.length = 0; // clear FX events after sending
+    // ------------------------------------------------------------
+    // 5. Periodic snapshots
+    // ------------------------------------------------------------
+    room.snapCounter = (room.snapCounter + 1) % Math.round(TICK_HZ / SNAP_HZ);
+    if (room.snapCounter === 0) {
+        broadcast(room, snapshot(room));
+        st.events.length = 0; // clear one-shot events after sending
     }
+    console.log(0);
+    if (st.runActive) {
+        console.log(1);// 👈 skip check before round actually begins
+        const aliveCount = [...room.players.values()].filter(p => !p.dead && p.hp > 0).length;
+
+        if (aliveCount === 0 && !st.allDead) {
+            st.allDead = true;
+            st.wipeTimer = 3.0;
+            broadcast(room, { type: "all_players_dead" });
+            console.log(`[room ${room.id}] ⚰️ All players dead — restarting soon`);
+        }
+
+        if (st.allDead) {
+            st.wipeTimer -= DT;
+            if (st.wipeTimer <= 0) {
+                restartRoom(room);
+            }
+        }
+    }
+}
+
+function restartRoom(room) {
+    const st = room.state;
+    st.allDead = false;
+    st.wipeTimer = 0;
+    st.portalUnlocked = false;
+    st.enemies.length = 0;
+    st.events.length = 0;
+    st.stage = 1;
+    st.time = 0;
+    st.runActive = false;       // 👈 not active yet
+
+    // Respawn players
+    for (const pl of room.players.values()) {
+        pl.dead = false;
+        pl.hp = pl.stats?.maxHealth ?? 120;
+        pl.mana = pl.stats?.maxMana ?? 100;
+        pl.shield = 0;
+        pl.x = 0;
+        pl.z = 0;
+        pl.respawnTimer = 0;
+    }
+
+    // spawn first wave *after a small delay or onStart event*
+    spawnWave(room, 6);
+    st.runActive = true;        // 👈 run now live
+    broadcast(room, { type: "run_reset" });
 }
 
 function snapshot(room){

@@ -48,7 +48,7 @@ export function spawnWave(room, count = 8) {
     const stage = st.stage ?? 1;
 
     const picks = weightedBag(stage, count);
-    const eliteChance = Math.min(0.15 + stage * 0.02, 0.45);
+    const eliteChance = Math.min(0.15 + stage * 0.1, 0.45);
 
     for (const t of picks) {
         const pos = ringSpawn(8 + Math.random() * 10);

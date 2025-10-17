@@ -128,11 +128,32 @@ export class Game {
 
         this.state = 'menu';
         this.ui.bindButtons({
-            onStart: ()=>{ this.resetRun(); this.ui.showStage(1,true); this.canvas.focus(); },
-            onStageContinue: ()=>{},
-            onRestart: ()=>{ this.resetRun(); this.ui.showStage(1,true); }
+            onStart: () => {
+                this.resetRun();
+                this.ui.showStage(1, true);
+                this.canvas.focus();
+            },
+            onStageContinue: () => {},
+            onRestart: () => {
+                const alive = [...this.remotePlayers.values()].filter(p => !p.dead && p.hp > 0).length;
+                if (alive === 0) {
+                    console.log("🌀 All players dead — requesting restart...");
+                    // ask the server to restart the room
+                    this.socket.send(JSON.stringify({ type: "request_restart" }));
+                } else {
+                    this.ui.toast(`${alive} player${alive > 1 ? "s" : ""} still alive!`);
+                }
+            }
         });
+        function createToast() {
+            const t = document.createElement("div");
+            t.id = "toast";
+            t.className = "toast";
+            document.body.appendChild(t);
+            return t;
+        }
     }
+
     makeNameTag(text){
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
@@ -205,6 +226,13 @@ export class Game {
             this.ui.hideReward();
             if (msg.item) this.ui.toast(`${msg.item.name} (${msg.item.rarity})`);
         }
+        if (msg.type === "all_players_dead") {
+            this.showDeathOverlay("All players are dead! Restarting soon...");
+        }
+        if (msg.type === "run_reset") {
+            this.resetRun();
+        }
+
         else if (msg.type === 'snapshot'){
             if (typeof msg.seq === 'number' && msg.seq <= this.lastSeq) return;
             if (typeof msg.seq === 'number') this.lastSeq = msg.seq;
@@ -275,9 +303,14 @@ export class Game {
         }
 
     }
-
+    showDeathOverlay() {
+        const overlay = document.getElementById('endOverlay');
+        overlay.classList.add('show');
+        overlay.querySelector('#endSubtitle').textContent = "You Died";
+    }
     // ---- Lifecycle ----
     resetRun(){
+        this.player.dead = false;
         this.player.stats = {
             moveSpeed: 6.0, maxHealth:120, maxMana:100,
             healthRegen:0.01, manaRegen:0.1, maxShield:25,
@@ -332,6 +365,7 @@ export class Game {
         this.updateStatusFx(dt);
         this.updatePoolsVisual(dt);
         this.ui.updateHUD(this);
+        this.updateAliveCount();
         this.scene.traverse(obj => {
             const anim = obj.userData?.animationManager;
             if (anim) anim.update(dt);
@@ -515,22 +549,51 @@ export class Game {
         }
     }
 
+    onPlayerDeath() {
+        if (this.player.dead) return;
+        this.player.dead = true;
+
+        // stop inputs, slow camera, etc.
+        this.inputLocked = true;
+
+        // show end overlay
+        const overlay = document.getElementById('endOverlay');
+        if (overlay) {
+            overlay.classList.add('show');
+            overlay.querySelector('#endSubtitle').textContent = 'YOU DIED';
+        }
+
+        // optional: play death FX
+        this.fx.ringBurst(this.player.x, this.player.z, 0xff0000, 0.6, 2.5);
+    }
 
     // ---- FX events & status flash ----
-    handleFxEvent(ev){
+// ---- FX events & status flash ----
+    handleFxEvent(ev) {
         const tint = ev.tint ?? 0xffffff;
+
         if (ev.type === 'fx_muzzle') this.fx.muzzleFlash(ev.x, ev.z, tint);
         else if (ev.type === 'fx_hit') this.fx.hitSpark(ev.x, ev.z, tint);
         else if (ev.type === 'fx_shrapnel') this.fx.ringBurst(ev.x, ev.z, tint, 0.4, ev.r ?? 1.6);
         else if (ev.type === 'fx_pool') this.fx.ringBurst(ev.x, ev.z, tint, 0.4, 1.4);
+
+        // --- status flashes ---
         else if (ev.type === 'fx_status' && ev.targetId) {
             this._statusFX.set(ev.targetId, { ttl: 0.45, color: tint });
+
+            // 👇 new: handle death status for the local player
+            if ((ev.type === 'fx_status' && ev.status === 'dead') ||
+                (ev.type === 'player_dead' && ev.id === this.player.id)) {
+                this.onPlayerDeath();
+            }
         }
-           else if (ev.type === 'fx_damage') {
-                 const c = new THREE.Color(0xffb24d);
-                 const color = `#${c.getHexString()}`;
-                 this.damageNumbers.spawn({x:ev.x, y:0.9, z:ev.z}, ev.value, color);
-               }
+
+        // --- damage numbers ---
+        else if (ev.type === 'fx_damage') {
+            const c = new THREE.Color(0xffb24d);
+            const color = `#${c.getHexString()}`;
+            this.damageNumbers.spawn({ x: ev.x, y: 0.9, z: ev.z }, ev.value, color);
+        }
     }
 
     updateStatusFx(dt){
@@ -663,5 +726,12 @@ export class Game {
             this.remotePlayers.set(id,m);
         }
         return m;
+    }
+    updateAliveCount() {
+        const alive = [...this.remotePlayers.values()].filter(p => !p.dead && p.hp > 0).length;
+        const total = this.remotePlayers.size + 1;
+        const el = document.getElementById("aliveCount");
+        if (el) el.textContent = `Players Alive: ${alive}/${total}`;
+        this.aliveCount = alive;
     }
 }

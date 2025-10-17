@@ -48,5 +48,7 @@ export function applyDamagePlayer(room, player, dmg, src) {
     }
     if (player.hp <= 0) {
         st.events.push({ type:"fx_status", targetId: player.id, status:"dead", tint:0xff0000 });
+        st.events.push({ type: "player_dead", id: player.id, x: player.x, z: player.z })
+        player.dead = true;
     }
 }

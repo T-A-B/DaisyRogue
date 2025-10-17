@@ -49,7 +49,7 @@ function pawnRangedAI(room, e, dt){
     const dx=t.x-e.x, dz=t.z-e.z, d=Math.hypot(dx,dz)||1;
     if (d <= 13){ // in range
         spawnEnemyProjectile(room, e, dx, dz, {
-            speed: 20, ttl: 1.2, dmg: 8,
+            speed: 50, ttl: 1.3, dmg: 10,
             status: Math.random() < 0.25 ? { type:"bleed", dur:1.6, power:4 } : null,
             tint: 0xff9898, kind:"pawn_ranged"
         });

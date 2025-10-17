@@ -70,11 +70,7 @@ export class UISystem {
         };
 
         // Whenever you show the stage overlay, enable the listener:
-        this.el.stageOverlay.addEventListener('transitionend', () => {
-            if (this.el.stageOverlay.classList.contains('show')) {
-                window.addEventListener('keydown', this._onStageKey);
-            }
-        });
+
 
         // --- Restart button ---
         this.el.restartBtn.onclick = () => {
@@ -82,12 +78,21 @@ export class UISystem {
             onRestart?.();
         };
     }
+    enableStageContinueKey() {
+        // attach only once while visible
+        window.addEventListener('keydown', this._onStageKey);
+    }
 
+    disableStageContinueKey() {
+        window.removeEventListener('keydown', this._onStageKey);
+    }
     showStart(){ this.el.startOverlay.classList.add('show'); }
     showStage(stage, initial=false){
         this.el.stageTitle.textContent = `Stage ${stage}`;
         this.el.stageSubtitle.textContent = initial ? 'Find the portal, defeat the boss.' : 'Stage advanced! Enemies grow stronger.';
         this.el.stageOverlay.classList.add('show');
+        this.enableStageContinueKey();
+
     }
     showEnd(victory){
         this.el.endTitle.textContent = victory ? 'You Won!' : 'You Died';
